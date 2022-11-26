@@ -1,0 +1,30 @@
+print() 
+metadata 
+otu_taxa_ws = Features_Table + Taxonomic_table
+Features_Table
+Taxonomic_table
+Relative_abundance
+otu_taxa_ws_ra = Relative_abundance + Taxonomic_table
+
+formatted_otu_taxa_ws = tidy(otu_taxa_ws )
+formatted_otu_taxa_ws_ra = tidy(otu_taxa_ws_ra )
+
+abundance_metadata = formatted_otu_taxa_ws + metadata 
+abundance_metadata_ra = formatted_otu_taxa_ws_ra + metadata 
+
+
+
+OTU
+Kingdom
+Phylum
+Class
+Order
+Family
+Genus
+Species
+SciName
+
+SampleID 
+AnimalType 
+SampleLocation         
+BWG  
