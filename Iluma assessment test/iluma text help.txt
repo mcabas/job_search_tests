@@ -24,7 +24,7 @@ Genus
 Species
 SciName
 
-SampleID 
+	º
 AnimalType 
 SampleLocation         
 BWG  
