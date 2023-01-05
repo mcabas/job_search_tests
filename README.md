@@ -1,4 +1,4 @@
-# Company test
+# Job Search Tests
  
 Welcome to my job search repository! Here, you will find a collection of the various tests and in-home assessments that I have completed as part of my journey to find a new job.
 
