@@ -111,19 +111,114 @@ limit 5
 --7. Which is the % of retailers in the ranking of 2019 that sell in 
 --	more than 5 countries?
 
-WITH total_retailers AS (
-    SELECT COUNT(*) as total
+SELECT (SUM(CASE WHEN countries_of_operation > 5 THEN 1 ELSE 0 END)*100) / (SELECT COUNT(*) FROM cos2019) as percentage
+FROM cos2019
+
+
+-- Investigate queries
+
+--1
+SELECT COUNT(*) FROM cos2019
+--2
+SELECT (SUM(CASE WHEN countries_of_operation > 5 THEN 1 ELSE 0 END)) AS more_than_5 FROM cos2019
+--3
+SELECT name, countries_of_operation
+FROM cos2019
+WHERE countries_of_operation > 5
+ORDER BY countries_of_operation DESC
+
+--8. Who is the retailer present in more countries in 2019 that also
+--	has a revenue higher than the average revenue of all retailers in 2019?
+
+WITH avg_revenue AS (
+    SELECT AVG(retail_revenue) as avg_revenue
     FROM cos2019
 )
-SELECT (SUM(CASE WHEN countries_of_operation > 5 THEN 1 ELSE 0 END) / total.total)*100 as percentage
-FROM cos2019, total_retailers
+SELECT name, countries_of_operation, retail_revenue
+FROM cos2019, avg_revenue
+WHERE retail_revenue > avg_revenue AND countries_of_operation = (SELECT MAX(countries_of_operation) FROM cos2019)
 
---8. Who is the retailer present in more countries in 2019 that also 
---	has a revenue higher than the average revenue of all retailers in 2019?
+--subquery option
+
+SELECT name, countries_of_operation, retail_revenue
+FROM cos2019
+WHERE retail_revenue > (SELECT AVG(retail_revenue) FROM cos2019) AND countries_of_operation = (SELECT MAX(countries_of_operation) FROM cos2019)
+
 --9. How many retailers have a retail revenue cagr higher than 5%, 
 -- 	list them grouping them per year and in descendent order.
+
+SELECT 	year,
+		COUNT(*) as count_retailers,
+		name,
+		retail_revenue_cagr
+FROM (
+  SELECT '2017' as year, name, retail_revenue_cagr
+  FROM cos2017
+  WHERE (retail_revenue_cagr*100) > 5
+  UNION
+  SELECT '2018' as year, name, retail_revenue_cagr
+  FROM cos2018
+  WHERE (retail_revenue_cagr*100)  > 5
+  UNION
+  SELECT '2019' as year, name, retail_revenue_cagr
+  FROM cos2019
+  WHERE (retail_revenue_cagr*100)  > 5
+) as retailers_cagr
+GROUP BY year, name, retail_revenue_cagr
+ORDER BY year, count_retailers DESC, retail_revenue_cagr DESC;
+
+
 --10. Identify records with nulls in any variable.
+
+--for cos2017
+SELECT *
+FROM cos2017
+WHERE 	rank IS NULL OR
+		name IS NULL OR 
+		country_of_origin IS NULL OR
+		retail_revenue IS NULL OR 
+		parent_company_revenue IS NULL OR 
+		parent_company_net_income IS NULL OR 
+		dominant_operational_format IS NULL OR 
+		countries_of_operation IS NULL OR 
+		retail_revenue_cagr IS NULL;
+
+--Also, the query can be applied to other tables as well, cos2018 and cos2019.
+SELECT *
+FROM cos2019
+WHERE 	rank IS NULL OR
+		name IS NULL OR 
+		country_of_origin IS NULL OR
+		retail_revenue IS NULL OR 
+		parent_company_revenue IS NULL OR 
+		parent_company_net_income IS NULL OR 
+		dominant_operational_format IS NULL OR 
+		countries_of_operation IS NULL OR 
+		retail_revenue_cagr IS NULL;
+
 --11. Create a variable to segment retailers by their retail revenue cagr:
 -- a.	<0,03 alias A
 -- b.	0,031-0,069 alias B
 -- c.	>0,07 alias C
+
+SELECT name, retail_revenue_cagr,
+CASE
+    WHEN retail_revenue_cagr < 0.03 THEN 'A'
+    WHEN retail_revenue_cagr BETWEEN 0.031 AND 0.069 THEN 'B'
+    WHEN retail_revenue_cagr > 0.07 THEN 'C'
+    ELSE 'Not defined'
+END as revenue_cagr_segment
+FROM cos2017
+
+--Also, the query can be applied to other tables as well, cos2018 and cos2019.
+
+SELECT name, retail_revenue_cagr,
+CASE
+    WHEN retail_revenue_cagr < 0.03 THEN 'A'
+    WHEN retail_revenue_cagr BETWEEN 0.031 AND 0.069 THEN 'B'
+    WHEN retail_revenue_cagr > 0.07 THEN 'C'
+    ELSE 'Not defined'
+END as revenue_cagr_segment
+FROM cos2019
+
+-- END OF THE SQL TEST
