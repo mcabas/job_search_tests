@@ -60,37 +60,49 @@ LIMIT 3
 
 SELECT
   cosponsor_1.cosponsor_name AS senator_1,
+  cosponsor_2.cosponsor_name AS senator_2,
   COUNT(*) AS mutual_cosponsorships
-FROM cosponsors AS cosponsor_1
-JOIN cosponsors AS cosponsor_2
-  ON cosponsor_1.bill_number = cosponsor_2.bill_number
-  AND cosponsor_1.cosponsor_name != cosponsor_2.cosponsor_name
+FROM cosponsors cosponsor_1
+JOIN cosponsors cosponsor_2
+  ON cosponsor_1.sponsor_name = cosponsor_2.cosponsor_name
+  AND cosponsor_1.cosponsor_name = cosponsor_2.sponsor_name
 GROUP BY cosponsor_1.cosponsor_name, cosponsor_2.cosponsor_name
-ORDER BY COUNT(*) DESC
-LIMIT 3;
+ORDER BY mutual_cosponsorships DESC
+LIMIT 1;
 
 -- 2. Now find the most networked senator from each state. 
 -- If multiple senators tie for top, show both. Return columns corresponding to state, 
 -- senator and mutual cosponsorship count.
 
-SELECT c.cosponsor_state AS state, c.cosponsor_name AS senator, COUNT(DISTINCT c2.cosponsor_name) AS mutual_cosponsorships
-FROM cosponsors c
-JOIN (
-    SELECT cosponsor_state, MAX(mutual_cosponsorships) AS max_mutual_cosponsorships
-    FROM (
-        SELECT cosponsor1.cosponsor_state, cosponsor1.cosponsor_name, COUNT(DISTINCT cosponsor2.cosponsor_name) AS mutual_cosponsorships
-        FROM cosponsors AS cosponsor1
-        JOIN cosponsors AS cosponsor2 ON cosponsor1.bill_number = cosponsor2.bill_number
-                                     AND cosponsor1.cosponsor_name != cosponsor2.cosponsor_name
-                                     AND cosponsor1.cosponsor_state = cosponsor2.cosponsor_state
-                                     AND cosponsor1.sponsor_name != cosponsor2.cosponsor_name
-        GROUP BY cosponsor1.cosponsor_state, cosponsor1.cosponsor_name
-    )
-    GROUP BY cosponsor_state
-) m ON c.cosponsor_state = m.cosponsor_state
-   AND COUNT(DISTINCT c.cosponsor_name, c.sponsor_name) = m.max_mutual_cosponsorships
-GROUP BY c.cosponsor_state, c.cosponsor_name
-ORDER BY c.cosponsor_state, mutual_cosponsorships DESC;
+WITH senator_cosponsor_counts AS (
+  SELECT 
+    cosponsor_state, 
+    cosponsor_name, 
+    COUNT(DISTINCT sponsor_name) AS mutual_cosponsor_count
+  FROM cosponsors
+  WHERE cosponsor_state != ''
+  GROUP BY cosponsor_state, cosponsor_name
+	ORDER BY mutual_cosponsor_count DESC
+	
+	
+)
+
+SELECT 
+  scc.cosponsor_state AS state,
+  scc.cosponsor_name AS senator,
+  scc.mutual_cosponsor_count
+FROM senator_cosponsor_counts AS scc
+INNER JOIN (
+  SELECT cosponsor_state, MAX(mutual_cosponsor_count) AS max_count
+  FROM senator_cosponsor_counts
+  GROUP BY cosponsor_state
+  HAVING MAX(mutual_cosponsor_count) = (SELECT MAX(mutual_cosponsor_count) FROM senator_cosponsor_counts)
+) AS max_counts
+ON scc.cosponsor_state = max_counts.cosponsor_state 
+  AND scc.mutual_cosponsor_count = max_counts.max_count
+ORDER BY scc.mutual_cosponsor_count DESC
+
+--HAVING COUNT(*) = (SELECT MAX(mutual_cosponsor_count) FROM senator_cosponsor_counts)
 
 -- 3. Find the senators who cosponsored but didn't sponsor bills.
 --this is working
