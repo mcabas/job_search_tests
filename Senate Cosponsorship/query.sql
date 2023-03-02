@@ -51,7 +51,7 @@ LIMIT 5
 
 SELECT * 
 FROM cosponsors 
-LIMIT 3
+LIMIT 5
 
 -- 1. Find the most networked senator. That is, the one with the most mutual cosponsorships.
 -- A mutual cosponsorship refers to two senators who have each cosponsored a bill sponsored
@@ -75,16 +75,13 @@ LIMIT 1;
 -- senator and mutual cosponsorship count.
 
 WITH senator_cosponsor_counts AS (
-  SELECT 
+	SELECT 
     cosponsor_state, 
     cosponsor_name, 
     COUNT(DISTINCT sponsor_name) AS mutual_cosponsor_count
-  FROM cosponsors
-  WHERE cosponsor_state != ''
-  GROUP BY cosponsor_state, cosponsor_name
-	ORDER BY mutual_cosponsor_count DESC
-	
-	
+  	FROM cosponsors
+  	WHERE cosponsor_state != ''
+  	GROUP BY cosponsor_state, cosponsor_name
 )
 
 SELECT 
@@ -92,17 +89,14 @@ SELECT
   scc.cosponsor_name AS senator,
   scc.mutual_cosponsor_count
 FROM senator_cosponsor_counts AS scc
-INNER JOIN (
-  SELECT cosponsor_state, MAX(mutual_cosponsor_count) AS max_count
-  FROM senator_cosponsor_counts
-  GROUP BY cosponsor_state
-  HAVING MAX(mutual_cosponsor_count) = (SELECT MAX(mutual_cosponsor_count) FROM senator_cosponsor_counts)
-) AS max_counts
+INNER JOIN (SELECT cosponsor_state, MAX(mutual_cosponsor_count) AS max_count 
+			FROM senator_cosponsor_counts
+			GROUP BY cosponsor_state
+			HAVING MAX(mutual_cosponsor_count) = (SELECT MAX(mutual_cosponsor_count)
+												  FROM senator_cosponsor_counts)
+		   ) AS max_counts
 ON scc.cosponsor_state = max_counts.cosponsor_state 
-  AND scc.mutual_cosponsor_count = max_counts.max_count
-ORDER BY scc.mutual_cosponsor_count DESC
-
---HAVING COUNT(*) = (SELECT MAX(mutual_cosponsor_count) FROM senator_cosponsor_counts)
+AND scc.mutual_cosponsor_count = max_counts.max_count
 
 -- 3. Find the senators who cosponsored but didn't sponsor bills.
 --this is working
