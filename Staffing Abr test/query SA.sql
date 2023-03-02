@@ -114,7 +114,7 @@ WITH CTE_Loan AS (
 	ORDER BY loannumber, reportdate
 )
 SELECT 	reportdate,
-		CASE WHEN ach_enroll_status = 'enrolled in ACH' THEN COUNT (*) 
+		CASE WHEN ach_enroll_status = 'enrolled in ACH' THEN +1 
 		ELSE 0
 		END AS Number_of_enrollments
 
