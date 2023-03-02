@@ -112,12 +112,19 @@ WITH CTE_Loan AS (
 	WHERE reportdate >= '2019-10-24 00:00:00' AND reportdate <= '2019-10-31 00:00:00'
 	GROUP BY reportdate, ach_yn, daysonfile, loannumber
 	ORDER BY loannumber, reportdate
-)
-SELECT 	reportdate,
+	),
+	CTE_enrollmentS AS (
+	SELECT 	reportdate,
 		CASE WHEN ach_enroll_status = 'enrolled in ACH' THEN +1 
 		ELSE 0
-		END AS Number_of_enrollments
-
-FROM CTE_Loan 
-GROUP BY reportdate, ach_enroll_status
+		END AS Number_of_enrollments		
+	FROM CTE_Loan 
+	GROUP BY reportdate, ach_enroll_status
+	ORDER BY reportdate
+	)
+	
+SELECT 	DISTINCT reportdate,
+		SUM (Number_of_enrollments) OVER (PARTITION BY reportdate) AS ach_enroll_status_sum
+FROM CTE_enrollmentS 
+GROUP BY reportdate, Number_of_enrollments
 ORDER BY reportdate
