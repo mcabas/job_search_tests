@@ -58,14 +58,45 @@ LIMIT 3
 -- by the other. Even if a pair of senators have cooperated on many bills, the relationship 
 -- still counts as one.
 
+SELECT
+  cosponsor_1.cosponsor_name AS senator_1,
+  COUNT(*) AS mutual_cosponsorships
+FROM cosponsors AS cosponsor_1
+JOIN cosponsors AS cosponsor_2
+  ON cosponsor_1.bill_number = cosponsor_2.bill_number
+  AND cosponsor_1.cosponsor_name != cosponsor_2.cosponsor_name
+GROUP BY cosponsor_1.cosponsor_name, cosponsor_2.cosponsor_name
+ORDER BY COUNT(*) DESC
+LIMIT 3;
+
 -- 2. Now find the most networked senator from each state. 
 -- If multiple senators tie for top, show both. Return columns corresponding to state, 
 -- senator and mutual cosponsorship count.
 
--- 3. Find the senators who cosponsored but didn't sponsor bills.
+SELECT c.cosponsor_state AS state, c.cosponsor_name AS senator, COUNT(DISTINCT c2.cosponsor_name) AS mutual_cosponsorships
+FROM cosponsors c
+JOIN (
+    SELECT cosponsor_state, MAX(mutual_cosponsorships) AS max_mutual_cosponsorships
+    FROM (
+        SELECT cosponsor1.cosponsor_state, cosponsor1.cosponsor_name, COUNT(DISTINCT cosponsor2.cosponsor_name) AS mutual_cosponsorships
+        FROM cosponsors AS cosponsor1
+        JOIN cosponsors AS cosponsor2 ON cosponsor1.bill_number = cosponsor2.bill_number
+                                     AND cosponsor1.cosponsor_name != cosponsor2.cosponsor_name
+                                     AND cosponsor1.cosponsor_state = cosponsor2.cosponsor_state
+                                     AND cosponsor1.sponsor_name != cosponsor2.cosponsor_name
+        GROUP BY cosponsor1.cosponsor_state, cosponsor1.cosponsor_name
+    )
+    GROUP BY cosponsor_state
+) m ON c.cosponsor_state = m.cosponsor_state
+   AND COUNT(DISTINCT c.cosponsor_name, c.sponsor_name) = m.max_mutual_cosponsorships
+GROUP BY c.cosponsor_state, c.cosponsor_name
+ORDER BY c.cosponsor_state, mutual_cosponsorships DESC;
 
+-- 3. Find the senators who cosponsored but didn't sponsor bills.
+--this is working
 SELECT DISTINCT cosponsor_name
 FROM cosponsors
 WHERE cosponsor_name NOT IN (SELECT sponsor_name
 	  FROM cosponsors)
 LIMIT 5
+
