@@ -183,35 +183,92 @@
 		 ,[QTY_SHOPPERS]: number of unique shopper that made longon at the store on that specific date;
  	*/
 
--- ANSWER
+-- ANSWER 1 ////////////////////BETTER ANSWER
 
     USE DATABASE TEST_DB;
     USE ROLE TESTER_ROLE;
 
 -- Create the Orders and Shoppers summary table
-CREATE TABLE Orders_Shoppers_Summary AS
 SELECT
-  DATE_TRUNC('month', o.STARTED_AT_LOCAL) AS MONTH_REF,
-  DATE_TRUNC('week', o.STARTED_AT_LOCAL) AS WEEK_REF,
-  DATE_TRUNC('day', o.STARTED_AT_LOCAL) AS DATE_REF,
-  s.STORE_NAME,
-  b.BRAND_NAME AS STORE_BRAND,
-  COUNT(DISTINCT o.ORDER_ID) AS QTY_ORDERS,
-  COUNT(DISTINCT o.SHOPPER_ID) AS QTY_SHOPPERS
+    DATE_TRUNC('MONTH', o.STARTED_AT_LOCAL) AS MONTH_REF,
+    DATE_TRUNC('WEEK', o.STARTED_AT_LOCAL) AS WEEK_REF,
+    DATE_TRUNC('DAY', o.STARTED_AT_LOCAL) AS DATE_REF,
+    s.STORE_NAME,
+    b.BRAND_NAME AS STORE_BRAND,
+    COUNT(DISTINCT o.ORDER_ID) AS QTY_ORDERS,
+    COUNT(DISTINCT o.SHOPPER_ID) AS QTY_SHOPPERS
 FROM
-  TEST_DB.TEST_DATA.ORDERS o
-  JOIN TEST_DB.TEST_DATA.STORES s ON o.PHYSICAL_STORE_ID = s.PHYSICAL_STORE_ID
-  JOIN TEST_DB.TEST_DATA.BRANDS b ON s.BRAND_ID = b.BRAND_ID
-  JOIN TEST_DB.TEST_DATA.SHOPPERS_LOG sl ON o.SHOPPER_ID = sl.SHOPPER_ID
+    TEST_DB.TEST_DATA.ORDERS o
+    JOIN TEST_DB.TEST_DATA.STORES s ON o.PHYSICAL_STORE_ID = s.PHYSICAL_STORE_ID
+    JOIN TEST_DB.TEST_DATA.BRANDS b ON s.BRAND_ID = b.BRAND_ID
+    JOIN TEST_DB.TEST_DATA.SHOPPERS_LOG sl ON o.SHOPPER_ID = sl.SHOPPER_ID
 WHERE
-  sl.ACTIVATED_AT_UTC <= o.FINISHED_AT_LOCAL
-  AND (sl.DEACTIVATED_AT_UTC IS NULL OR sl.DEACTIVATED_AT_UTC >= o.STARTED_AT_LOCAL)
+    sl.ACTIVATED_AT_UTC <= o.FINISHED_AT_LOCAL
+    AND (sl.DEACTIVATED_AT_UTC IS NULL OR sl.DEACTIVATED_AT_UTC >= o.STARTED_AT_LOCAL)
 GROUP BY
-  MONTH_REF,
-  WEEK_REF,
-  DATE_REF,
-  s.STORE_NAME,
-  b.BRAND_NAME;
+    MONTH_REF,
+    WEEK_REF,
+    DATE_REF,
+    s.STORE_NAME,
+    b.BRAND_NAME;
+
+-- ANSWER 2
+WITH OrderCounts AS (
+  SELECT
+    DATE_TRUNC('month', o.STARTED_AT_LOCAL) AS MONTH_REF,
+    DATE_TRUNC('week', o.STARTED_AT_LOCAL) AS WEEK_REF,
+    DATE_TRUNC('day', o.STARTED_AT_LOCAL) AS DATE_REF,
+    s.STORE_NAME,
+    b.BRAND_NAME AS STORE_BRAND,
+    COUNT(DISTINCT o.ORDER_ID) AS QTY_ORDERS
+  FROM
+    TEST_DB.TEST_DATA.ORDERS o
+    JOIN TEST_DB.TEST_DATA.STORES s ON o.PHYSICAL_STORE_ID = s.PHYSICAL_STORE_ID
+    JOIN TEST_DB.TEST_DATA.BRANDS b ON s.BRAND_ID = b.BRAND_ID
+  GROUP BY
+    MONTH_REF,
+    WEEK_REF,
+    DATE_REF,
+    s.STORE_NAME,
+    b.BRAND_NAME
+),
+
+ShopperCounts AS (
+  SELECT
+    DATE_TRUNC('month', o.STARTED_AT_LOCAL) AS MONTH_REF,
+    DATE_TRUNC('week', o.STARTED_AT_LOCAL) AS WEEK_REF,
+    DATE_TRUNC('day', o.STARTED_AT_LOCAL) AS DATE_REF,
+    s.STORE_NAME,
+    b.BRAND_NAME AS STORE_BRAND,
+    COUNT(DISTINCT o.SHOPPER_ID) AS QTY_SHOPPERS
+  FROM
+    TEST_DB.TEST_DATA.ORDERS o
+    JOIN TEST_DB.TEST_DATA.STORES s ON o.PHYSICAL_STORE_ID = s.PHYSICAL_STORE_ID
+    JOIN TEST_DB.TEST_DATA.BRANDS b ON s.BRAND_ID = b.BRAND_ID
+  GROUP BY
+    MONTH_REF,
+    WEEK_REF,
+    DATE_REF,
+    s.STORE_NAME,
+    b.BRAND_NAME
+)
+
+SELECT
+  oc.MONTH_REF,
+  oc.WEEK_REF,
+  oc.DATE_REF,
+  oc.STORE_NAME,
+  oc.STORE_BRAND,
+  oc.QTY_ORDERS,
+  sc.QTY_SHOPPERS
+FROM
+  OrderCounts oc
+  JOIN ShopperCounts sc ON oc.MONTH_REF = sc.MONTH_REF
+    AND oc.WEEK_REF = sc.WEEK_REF
+    AND oc.DATE_REF = sc.DATE_REF
+    AND oc.STORE_NAME = sc.STORE_NAME
+    AND oc.STORE_BRAND = sc.STORE_BRAND;
+
 
 
 --==============================================================================================================================
@@ -228,7 +285,82 @@ GROUP BY
  		[TOTAL_ORDERS]: number of orders done by the shopper;
  		[DEFECT_RATE]: in percentual, rounded to two decimals.
 	*/
-	 
+
+
+-- ANSWER 1
+
+WITH ShopperOrders AS (
+  SELECT
+    DATE_TRUNC('day', o.STARTED_AT_LOCAL) AS DATE_REF,
+    o.SHOPPER_ID,
+    COUNT(*) AS TOTAL_ORDERS,
+    COUNT(CASE WHEN o.HAS_DEFECT = TRUE THEN 1 END) AS DEFECT_ORDERS
+  FROM
+    TEST_DB.TEST_DATA.ORDERS o
+  GROUP BY
+    DATE_REF,
+    o.SHOPPER_ID
+),
+ShopperDefectRate AS (
+  SELECT
+    DATE_REF,
+    SHOPPER_ID,
+    TOTAL_ORDERS,
+    DEFECT_ORDERS,
+    ROUND((DEFECT_ORDERS * 100.0) / TOTAL_ORDERS, 2) AS DEFECT_RATE
+  FROM
+    ShopperOrders
+)
+SELECT
+  sd.DATE_REF,
+  sd.SHOPPER_ID,
+  sd.TOTAL_ORDERS,
+  sd.DEFECT_ORDERS,
+  sd.DEFECT_RATE
+FROM
+  (
+    SELECT
+      DATE_REF,
+      MAX(DEFECT_RATE) AS MAX_DEFECT_RATE
+    FROM
+      ShopperDefectRate
+    GROUP BY
+      DATE_REF
+  ) max_defect
+  JOIN ShopperDefectRate sd ON max_defect.DATE_REF = sd.DATE_REF AND max_defect.MAX_DEFECT_RATE = sd.DEFECT_RATE;
+ 
+ -- ANSWER 2 ////////////////////BETTER ANSWER
+
+WITH ShopperOrders AS (
+  SELECT
+    DATE_TRUNC('day', o.STARTED_AT_LOCAL) AS DATE_REF,
+    o.SHOPPER_ID,
+    COUNT(*) AS TOTAL_ORDERS,
+    COUNT(CASE WHEN o.HAS_DEFECT = TRUE THEN 1 END) AS DEFECT_ORDERS,
+    ROW_NUMBER() OVER (PARTITION BY DATE_TRUNC('day', o.STARTED_AT_LOCAL) ORDER BY (COUNT(CASE WHEN o.HAS_DEFECT = TRUE THEN 1 END))::FLOAT / COUNT(*)) AS DEFECT_RANK
+  FROM
+    TEST_DB.TEST_DATA.ORDERS o
+  GROUP BY
+    DATE_REF,
+    o.SHOPPER_ID
+), MaxDefectRate AS (
+  SELECT
+    DATE_REF,
+    MAX(DEFECT_RANK) AS MAX_DEFECT_RANK
+  FROM
+    ShopperOrders
+  GROUP BY
+    DATE_REF
+)
+SELECT
+  so.DATE_REF,
+  so.SHOPPER_ID,
+  so.TOTAL_ORDERS,
+  ROUND((so.DEFECT_ORDERS * 100.0) / so.TOTAL_ORDERS, 2) AS DEFECT_RATE
+FROM
+  ShopperOrders so
+  JOIN MaxDefectRate md ON so.DATE_REF = md.DATE_REF AND so.DEFECT_RANK = md.MAX_DEFECT_RANK;
+
 --==============================================================================================================================
 --==== QUESTION 3 ==============================================================================================================
 --==============================================================================================================================
@@ -249,6 +381,75 @@ GROUP BY
 		To keep in mind: the programmed shift is a JSON object.
 	*/
 
+-- Write query to inspect the structure of the JSON object  
+SELECT * FROM SHOPPERS_SHIFTS LIMIT 5
+
+-- Try a Query to extract information from JSON object 
+SELECT
+  PARSE_JSON(GET(PROGRAMMED_SHITFS, '2023-03-10')) AS SHIFT_INFO,
+  PARSE_JSON(GET(PROGRAMMED_SHITFS, '2023-03-10')):starts_at_utc::timestamp_ntz AS starts_at_utc,
+  PARSE_JSON(GET(PROGRAMMED_SHITFS, '2023-03-10')):ends_at_utc::timestamp_ntz AS ends_at_utc
+FROM SHOPPERS_SHIFTS
+LIMIT 3;
+
+-- Try a Query to flatten array objects (https://docs.snowflake.com/en/user-guide/json-basics-tutorial-flatten)
+
+SELECT
+  DATE_TRUNC('day', sl.ACTIVATED_AT_UTC) AS DATE_REF,
+  PARSE_JSON(shift_info.value):physical_store_id AS physical_store_id,
+  PARSE_JSON(shift_info.value):starts_at_utc::timestamp_ntz AS starts_at_utc,
+  PARSE_JSON(shift_info.value):ends_at_utc::timestamp_ntz AS ends_at_utc
+FROM
+  TEST_DB.TEST_DATA.SHOPPERS_LOG sl
+INNER JOIN
+    TEST_DB.TEST_DATA.SHOPPERS_SHIFTS ss ON sl.SHOPPER_ID = ss.SHOPPER_ID
+CROSS JOIN
+  LATERAL FLATTEN(INPUT => PARSE_JSON(TO_VARCHAR(ss.PROGRAMMED_SHITFS))) shift_info
+WHERE
+  shift_info.key = DATE_TRUNC('day', sl.ACTIVATED_AT_UTC)
+  
+--SELECTED ANSWER
+WITH ShopperAdherence AS (
+  SELECT
+    DATE_TRUNC('day', sl.ACTIVATED_AT_UTC) AS DATE_REF,
+    sl.SHOPPER_ID,
+    sl.PHYSICAL_STORE_ID,
+    sl.ACTIVATED_AT_UTC,
+    sl.DEACTIVATED_AT_UTC,
+    PARSE_JSON(TO_VARCHAR(ss.PROGRAMMED_SHITFS)) AS PROGRAMMED_SHITFS,
+    PARSE_JSON(shift_info.value):physical_store_id AS physical_store_id_from_json,
+    PARSE_JSON(shift_info.value):starts_at_utc::timestamp_ntz AS starts_at_utc,
+    PARSE_JSON(shift_info.value):ends_at_utc::timestamp_ntz AS ends_at_utc
+  FROM
+    TEST_DB.TEST_DATA.SHOPPERS_LOG sl
+  INNER JOIN
+    TEST_DB.TEST_DATA.SHOPPERS_SHIFTS ss ON sl.SHOPPER_ID = ss.SHOPPER_ID
+  CROSS JOIN
+    LATERAL FLATTEN(INPUT => PARSE_JSON(TO_VARCHAR(ss.PROGRAMMED_SHITFS))) shift_info
+  WHERE
+    shift_info.key = DATE_TRUNC('day', sl.ACTIVATED_AT_UTC)
+),
+ShopperAdherenceSummary AS (
+  SELECT
+    DATE_REF,
+    SHOPPER_ID,
+    SUM(DATEDIFF('minute', ACTIVATED_AT_UTC, DEACTIVATED_AT_UTC)) AS VALID_CONNECTED_TIME,
+    SUM(DATEDIFF('minute', starts_at_utc, ends_at_utc)) AS TOTAL_PROGRAMMED_TIME
+  FROM
+    ShopperAdherence
+  GROUP BY
+    DATE_REF,
+    SHOPPER_ID
+)
+SELECT
+  DATE_REF,
+  SHOPPER_ID,
+  VALID_CONNECTED_TIME,
+  TOTAL_PROGRAMMED_TIME,
+  ROUND((VALID_CONNECTED_TIME * 100.0) / NULLIF(TOTAL_PROGRAMMED_TIME, 0), 2) AS ADHERENCE_RATIO
+FROM
+  ShopperAdherenceSummary;
+  
 --==============================================================================================================================
 --==== QUESTION 4 ==============================================================================================================
 --==============================================================================================================================
@@ -263,3 +464,49 @@ GROUP BY
 		Based on that, build a reporting showing per each store the productive time ratio per day as a column, rounded to two 
 		decimals.
 	*/
+
+WITH OrderWorkload AS (
+  SELECT
+    o.PHYSICAL_STORE_ID,
+    DATE_TRUNC('day', o.STARTED_AT_LOCAL) AS DATE_REF,
+    SUM(DATEDIFF('second', o.STARTED_AT_LOCAL, o.FINISHED_AT_LOCAL)) AS WORKLOAD_TIME
+  FROM
+    TEST_DB.TEST_DATA.ORDERS o
+  GROUP BY
+    o.PHYSICAL_STORE_ID,
+    DATE_REF
+),
+ShopperConnectedTime AS (
+  SELECT
+    sl.PHYSICAL_STORE_ID,
+    DATE_TRUNC('day', sl.ACTIVATED_AT_UTC) AS DATE_REF,
+    SUM(DATEDIFF('second', sl.ACTIVATED_AT_UTC, sl.DEACTIVATED_AT_UTC)) AS CONNECTED_TIME
+  FROM
+    TEST_DB.TEST_DATA.SHOPPERS_LOG sl
+  GROUP BY
+    sl.PHYSICAL_STORE_ID,
+    DATE_REF
+),
+StoreProductiveTimeRatio AS (
+  SELECT
+    o.PHYSICAL_STORE_ID,
+    o.DATE_REF,
+    ROUND((SUM(o.WORKLOAD_TIME) * 100.0) / s.CONNECTED_TIME, 2) AS PRODUCTIVE_TIME_RATIO
+  FROM
+    OrderWorkload o
+    JOIN ShopperConnectedTime s ON o.PHYSICAL_STORE_ID = s.PHYSICAL_STORE_ID AND o.DATE_REF = s.DATE_REF
+  GROUP BY
+    o.PHYSICAL_STORE_ID,
+    o.DATE_REF,
+    s.CONNECTED_TIME
+)
+SELECT
+  s.PHYSICAL_STORE_ID,
+  spr.DATE_REF,
+  spr.PRODUCTIVE_TIME_RATIO
+FROM
+  TEST_DB.TEST_DATA.STORES s
+  LEFT JOIN StoreProductiveTimeRatio spr ON s.PHYSICAL_STORE_ID = spr.PHYSICAL_STORE_ID
+ORDER BY
+  s.PHYSICAL_STORE_ID,
+  spr.DATE_REF;
