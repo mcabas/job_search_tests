@@ -116,6 +116,7 @@ active_companies AS (
 ),
 monthly_mrr AS (
     SELECT
+		ac.planName,
         DATE_TRUNC('month', generate_series) AS month,
         COUNT(DISTINCT ac.idcompany) AS total_companies,
         SUM(ac.plan_price / ac.paymentFrequency) AS mrr
@@ -127,13 +128,14 @@ monthly_mrr AS (
     LEFT JOIN active_companies ac
         ON generate_series >= ac.firstPaymentDate
         AND (ac.retirementDate IS NULL OR generate_series <= ac.retirementDate)
-    GROUP BY month
-    ORDER BY month
+    GROUP BY month, planName
+    ORDER BY month, planName
 )
 SELECT
+	planName,
     month,
     total_companies,
-	mrr,
+	--mrr,
     ROUND(mrr::numeric,2) as mrr
 FROM monthly_mrr;
 
