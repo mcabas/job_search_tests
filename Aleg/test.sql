@@ -1,4 +1,4 @@
----- STEP 1. import tables
+--- STEP 1. import tables
 ---- create tables on Alegra DB.
 
 CREATE TABLE historico_plan (
@@ -219,7 +219,101 @@ LEFT JOIN (
 ) mm ON mp.country = mm.country
 ORDER BY total_mrr DESC;
 
----- 3
+---- 2 reloaded
+
+WITH market_metrics AS (
+    SELECT
+        c.country,
+        -- Métricas básicas
+        COUNT(DISTINCT c.idcompany) AS total_companies,
+        SUM(CASE 
+            WHEN h.planName = 'pyme' THEN 10/h.paymentFrequency
+            WHEN h.planName = 'pro' THEN 20/h.paymentFrequency 
+            WHEN h.planName = 'plus' THEN 30/h.paymentFrequency
+            ELSE 0 
+        END) AS total_mrr,
+        
+        -- Engagement
+        AVG(h.avgMonInvoices) AS avg_invoices,
+        AVG(h.avgMonBilling) AS avg_billing,
+        AVG(h.users) AS avg_users,
+        AVG(h.downloadReports) AS avg_downloads,
+        AVG(h.helpRequests) AS avg_help_requests,
+        
+        -- Crecimiento (usando la fecha máxima de los datos)
+        COUNT(DISTINCT CASE 
+            WHEN h.firstPaymentDate >= ((SELECT MAX(firstPaymentDate) FROM historico_plan) - INTERVAL '6 months') 
+            THEN c.idcompany 
+        END) AS new_companies_last_6m,
+        
+        -- Distribución de planes
+        COUNT(CASE WHEN h.planName = 'plus' THEN 1 END) * 100.0 / 
+        NULLIF(COUNT(*), 0) AS percentage_plus_plan,
+        
+        -- Canales de adquisición
+        COUNT(CASE WHEN c.channel = 'Digital' THEN 1 END) * 100.0 / 
+        NULLIF(COUNT(*), 0) AS percentage_digital,
+        COUNT(CASE WHEN c.channel = 'Referido' THEN 1 END) * 100.0 / 
+        NULLIF(COUNT(*), 0) AS percentage_referral,
+        COUNT(CASE WHEN c.channel = 'Alternativo' THEN 1 END) * 100.0 / 
+        NULLIF(COUNT(*), 0) AS percentage_alternative,
+        
+        -- Perfiles de usuarios
+        COUNT(CASE WHEN c.profile = 'Empresario' THEN 1 END) * 100.0 / 
+        NULLIF(COUNT(*), 0) AS percentage_entrepreneur,
+        COUNT(CASE WHEN c.profile = 'Contador' THEN 1 END) * 100.0 / 
+        NULLIF(COUNT(*), 0) AS percentage_accountant,
+        COUNT(CASE WHEN c.profile = 'Independiente' THEN 1 END) * 100.0 / 
+        NULLIF(COUNT(*), 0) AS percentage_freelancer,
+        
+        -- Tiempo en plataforma (usando la fecha máxima de los datos)
+        AVG(CASE 
+            WHEN h.retirementDate IS NULL THEN DATE_PART('day', (SELECT MAX(firstPaymentDate) FROM historico_plan)::timestamp - h.firstPaymentDate::timestamp)
+            ELSE DATE_PART('day', h.retirementDate::timestamp - h.firstPaymentDate::timestamp)
+        END) AS avg_days_active
+        
+    FROM company c
+    JOIN historico_plan h ON c.idcompany = h.idcompany
+    WHERE h.planName != 'consulta'
+    GROUP BY c.country
+),
+
+mrr_growth AS (
+    SELECT
+        country,
+        (MAX(mrr) - MIN(mrr)) / NULLIF(MIN(mrr), 0) * 100 AS mrr_growth_percentage
+    FROM (
+        SELECT
+            c.country,
+            DATE_TRUNC('month', h.firstPaymentDate) AS month,
+            SUM(CASE 
+                WHEN h.planName = 'pyme' THEN 10/h.paymentFrequency
+                WHEN h.planName = 'pro' THEN 20/h.paymentFrequency 
+                WHEN h.planName = 'plus' THEN 30/h.paymentFrequency
+                ELSE 0 
+            END) AS mrr
+        FROM company c
+        JOIN historico_plan h ON c.idcompany = h.idcompany
+        WHERE h.planName != 'consulta'
+        GROUP BY c.country, DATE_TRUNC('month', h.firstPaymentDate)
+    ) monthly_mrr
+    GROUP BY country
+)
+
+SELECT 
+    m.*,
+    g.mrr_growth_percentage,
+    -- Cálculo de score compuesto modificado (sin churn rate)
+    (m.total_mrr * 0.3 + 
+     m.avg_billing * 0.2 + 
+     (m.new_companies_last_6m * 100.0 / NULLIF(m.total_companies, 0)) * 0.2 +  -- Nueva métrica de crecimiento reciente
+     m.percentage_plus_plan * 0.1 +
+     COALESCE(g.mrr_growth_percentage, 0) * 0.2) AS priority_score
+FROM market_metrics m
+LEFT JOIN mrr_growth g ON m.country = g.country
+ORDER BY priority_score DESC;
+
+---- 3 por mes
 
 WITH cohortes AS (
     SELECT
@@ -259,3 +353,46 @@ SELECT
 FROM retention_data rd
 LEFT JOIN cohort_size cs ON rd.cohort_month = cs.cohort_month
 ORDER BY rd.cohort_month, rd.month;
+
+------- cohortes por Q
+WITH cohortes AS (
+    SELECT
+        idcompany,
+        DATE_TRUNC('quarter', registrationDate) AS cohort_quarter,
+        DATE_TRUNC('quarter', retirementDate) AS retirement_quarter
+    FROM historico_plan
+),
+cohort_size AS (
+    SELECT
+        cohort_quarter,
+        COUNT(DISTINCT idcompany) AS total_companies
+    FROM cohortes
+    GROUP BY cohort_quarter
+),
+retention_data AS (
+    SELECT
+        c.cohort_quarter,
+        DATE_TRUNC('quarter', generate_series) AS quarter,
+        COUNT(DISTINCT c.idcompany) AS retained_companies
+    FROM generate_series(
+        (SELECT MIN(cohort_quarter) FROM cohortes),
+        (SELECT MAX(cohort_quarter) FROM cohortes),
+        '1 month'::interval  -- Generamos por mes pero truncamos a quarter para capturar todos los trimestres
+    ) AS generate_series
+    LEFT JOIN cohortes c
+        ON generate_series >= c.cohort_quarter
+        AND (c.retirement_quarter IS NULL OR generate_series <= c.retirement_quarter)
+    GROUP BY c.cohort_quarter, quarter
+)
+SELECT
+    rd.cohort_quarter,
+    TO_CHAR(rd.cohort_quarter, '"Q"Q-YYYY') AS cohort_quarter_formatted,
+    rd.quarter,
+    TO_CHAR(rd.quarter, '"Q"Q-YYYY') AS quarter_formatted,
+    cs.total_companies,
+    rd.retained_companies,
+    (rd.retained_companies * 1.0 / cs.total_companies) * 100 AS retention_rate
+FROM retention_data rd
+LEFT JOIN cohort_size cs ON rd.cohort_quarter = cs.cohort_quarter
+WHERE rd.quarter >= rd.cohort_quarter  -- Filtramos para mostrar solo trimestres posteriores al cohorte
+ORDER BY rd.cohort_quarter, rd.quarter;
